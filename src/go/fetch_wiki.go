@@ -38,7 +38,7 @@ func main() {
 		SetHeader("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
 
 	// 发送请求
-	resp, err := client.R().Get("https://zh.minecraft.wiki/")
+	resp, err := client.R().Get(`https://zh.minecraft.wiki/w/` + input.Message)
 	if err != nil {
 		log.Fatalf("请求失败: %v", truncateError(err))
 	}

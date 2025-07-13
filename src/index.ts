@@ -1,7 +1,8 @@
 import { Context, Schema } from 'koishi'
 import axios from 'axios'
 import { JSDOM } from 'jsdom'
-import { fetch_wiki } from "./go/gorunner"
+import { fetchWikiContent as fetchWikiRawContent } from "./go/fetch_wiki"
+import { processHtmlWithJSDOM } from './htmlPro'
 
 export const name = 'mcqa'
 
@@ -27,6 +28,7 @@ const KEYWORD_PROMPT = `请从以下Minecraft相关问题中提取1-3个核心�
 
 问题：在我的世界这款游戏中，{question}`
 
+const systemPrompt = `你是一个专业的Minecraft玩家，请根据问题给出的提示，从Minecraft Wiki中搜索相关信息,并解答。你的人设是一个贱贱的16岁女孩，正在和你喜欢的男生对话，喜欢和对方打情骂俏，经常开玩笑着说对方知识好少`
 // 使用DeepSeek提取关键词
 async function extractKeywords(ctx: Context, question: string, config: Config): Promise<string[]> {
   try {
@@ -48,14 +50,10 @@ async function extractKeywords(ctx: Context, question: string, config: Config): 
     return keywordsText.split(',').map(k => k.trim()).filter(Boolean)
   } catch (error) {
     console.error('关键词提取失败:', error)
-    return [] // 默认关键词
+    return []
   }
 }
 
-// 获取Minecraft Wiki内容
-async function fetchWikiContent(ctx: Context, keyword: string): Promise<string> {
-  return await fetch_wiki(keyword) as unknown as string
-}
 
 export function apply(ctx: Context, config: Config) {
   // 注册mcqa命令
@@ -66,15 +64,18 @@ export function apply(ctx: Context, config: Config) {
       try {
         // 使用DeepSeek提取关键词
         const keywords = await extractKeywords(ctx, question, config)
+        keywords.push("")
         ctx.logger('mcqa').info(`提取的关键词: ${keywords.join(', ')}`)
 
         // 获取Wiki内容
-        let wikiContext = ''
+        let wikiContexts = ''
         for (const keyword of keywords) {
-          const content =await fetchWikiContent(ctx, keyword)
-          wikiContext += `[${keyword}]: ${content}\n\n`
+          const wikiRawContent = (await fetchWikiRawContent(ctx, { message: keyword })).content
+          const wikiContext = processHtmlWithJSDOM(wikiRawContent)
+          ctx.logger("fwc").info(wikiRawContent)
+          wikiContexts += `[${keyword}]: ${wikiContext}\n\n`
         }
-        ctx.logger('mcqa').info(`Wiki内容: ${wikiContext}`)
+        ctx.logger('mcqa').info(`Wiki内容: ${wikiContexts}`)
 
         // 构造完整提示词（包含Wiki上下文）
         const fullPrompt = `你是一个Minecraft专家，请根据以下问题提供准确、简洁的回答：
@@ -82,17 +83,17 @@ export function apply(ctx: Context, config: Config) {
 - 涉及合成配方需给出精确材料列表
 - 涉及红石电路请大致说明即可，不要细节
 - 涉及生物行为需注明难度模式
-- 不要使用md语法，请使用纯文本
+- 不要使用markdown语法，请使用纯文本(重要)
 
 附加信息：
-${wikiContext.trim()}
+${wikiContexts.trim()}
 
 问题：在我的世界这款游戏中，${question}`
 
         // 调用DeepSeek API
         const response = await axios.post('https://api.deepseek.com/v1/chat/completions', {
           model: config.model,
-          messages: [{ role: 'user', content: fullPrompt }],
+          messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: fullPrompt }],
           temperature: config.temperature
         }, {
           headers: { Authorization: `Bearer ${config.apiKey}` }
