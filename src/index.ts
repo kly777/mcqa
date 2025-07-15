@@ -72,7 +72,7 @@ export function apply(ctx: Context, config: Config) {
         let wikiContexts = ''
         try {
           for (const keyword of keywords) {
-            const wikiContext = fetchwiki(ctx, keyword)
+            const wikiContext =await fetchwiki(ctx, keyword)
             const keyWikiContext = `[${keyword}]: ${wikiContext}`
             ctx.logger('mcqa').info(`Wiki内容: ${keyWikiContext.substring(0, 100)}...`)
             wikiContexts += `${keyWikiContext}\n\n`
