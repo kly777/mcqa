@@ -22,15 +22,21 @@ export const Config: Schema<Config> = Schema.object({
 
 
 // 关键词提取提示词模板
-const KEYWORD_PROMPT = `请从以下Minecraft相关问题中提取1-3个核心关键词，用于在Minecraft Wiki中搜索相关信息。要求：
-- 只返回关键词本身，不要解释
-- 每个关键词用逗号分隔
+const KEYWORD_PROMPT = `请从以下Minecraft问题中提取3-4个最核心的中文关键词（如游戏版本、生物名、物品名等）。要求：
+- 只返回关键词本身，不要解释，关键词之间用空格分开
 - 关键词必须是游戏中的具体实体、机制或概念
+- 选择Minecraft Wiki中存在的条目名称
+- 例如：铜有什么用 -> 铜 铜矿 望远镜
 
-问题：在我的世界这款游戏中，{question}`
+问题：{question}`
 
-const systemPrompt = `你是一个专业的Minecraft玩家，请根据问题给出的提示，从Minecraft Wiki中搜索相关信息,并解答。你的人设是一个16岁女孩，和自己的朋友对话，时而开玩笑着说对方知识好少`
-// 使用DeepSeek提取关键词
+const systemPrompt = `你是一个专业的Minecraft游戏助手，请严格遵循：
+1. 回答必须基于Minecraft Wiki提供的信息
+2. 涉及游戏机制需注明适用版本（如Java 1.20/Bedrock 1.20）
+3. 涉及合成配方需列出精确材料（数量+名称）
+4. 涉及生物行为需注明难度模式
+5. 使用自然对话语气（16岁女孩风格），但保持信息准确性
+6. 当Wiki信息冲突时优先采用最新正式版内容`
 async function extractKeywords(ctx: Context, question: string, config: Config): Promise<string[]> {
   try {
     // 构造关键词提取提示词
@@ -48,7 +54,7 @@ async function extractKeywords(ctx: Context, question: string, config: Config): 
 
     // 解析返回的关键词
     const keywordsText = response.data.choices[0].message.content as string
-    return keywordsText.split(',').map(k => k.trim()).filter(Boolean)
+    return keywordsText.split(' ').map(k => k.trim()).filter(Boolean)
   } catch (error) {
     console.error('关键词提取失败:', error)
     return []
@@ -71,9 +77,11 @@ export function apply(ctx: Context, config: Config) {
         // 获取Wiki内容
         let wikiContexts = ''
         try {
-          for (const keyword of keywords) {
-            const wikiContext =await fetchwiki(ctx, keyword)
-            const keyWikiContext = `[${keyword}]: ${wikiContext}`
+          const wikiPromises = keywords.map(keyword => fetchwiki(ctx, keyword))
+          const wikiResults = await Promise.all(wikiPromises)
+
+          for (let i = 0; i < keywords.length; i++) {
+            const keyWikiContext = `[${keywords[i]}]: ${wikiResults[i]}`
             ctx.logger('mcqa').info(`Wiki内容: ${keyWikiContext.substring(0, 100)}...`)
             wikiContexts += `${keyWikiContext}\n\n`
           }
@@ -81,18 +89,19 @@ export function apply(ctx: Context, config: Config) {
           ctx.logger.info(`Wiki获取失败: ${error}`)
         }
 
-        // 构造完整提示词（包含Wiki上下文）
-        const fullPrompt = `你是一个Minecraft专家，请根据以下问题提供准确、简洁的回答：
-- 回答需包含具体游戏机制/版本差异
-- 涉及合成配方需给出精确材料列表
-- 涉及红石电路请大致说明即可，不要细节
-- 涉及生物行为需注明难度模式
-- 不要使用markdown语法，请使用纯文本(重要)
+        const fullPrompt = `请根据提供的Wiki信息回答Minecraft问题：
+### 回答规则：
+1. 涉及游戏机制 → 说明[版本]和[平台]
+2. 涉及合成配方 → 格式: "合成表: 3x木头 + 2x木棍"
+3. 涉及生物行为 → 注明[难度模式]
+4. 涉及红石 → 只说明功能原理，不说明电路图
+5. 使用自然对话但保持专业
 
-附加信息：
+### Wiki参考信息：
 ${wikiContexts.trim()}
 
-问题：在我的世界这款游戏中，${question}`
+### 问题：
+在Minecraft中，${question}`
 
         // 调用DeepSeek API
         const response = await axios.post('https://api.deepseek.com/v1/chat/completions', {

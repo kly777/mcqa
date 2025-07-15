@@ -7,7 +7,7 @@ export async function fetchwiki(ctx: Context, keyword: string) {
   try {
     const wikiRawContent = (await fetchWikiContent(ctx, { message: keyword }))
     if (wikiRawContent.error) {
-      ctx.logger.info(`Wiki获取失败: ${wikiRawContent.error}`)
+      ctx.logger.info(`从Wiki获取[${keyword}]失败或不存在该条目: ${wikiRawContent.error}`)
       return ""
     }
     const wikiContext = processHtmlWithJSDOM(wikiRawContent.content)

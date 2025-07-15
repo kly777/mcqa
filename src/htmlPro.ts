@@ -18,6 +18,7 @@ export function processHtmlWithJSDOM(rawHtml: string): string {
 
   // 提取主要内容区域（根据常见网站结构）
   const mainContent =
+    document.querySelector('.mw-content-ltr') ||
     document.querySelector('main') ||
     document.querySelector('.mw-body') || // MediaWiki 结构
     document.querySelector('#content') ||
