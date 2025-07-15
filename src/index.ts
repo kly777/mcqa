@@ -1,8 +1,9 @@
 import { Context, Schema } from 'koishi'
 import axios from 'axios'
 import { JSDOM } from 'jsdom'
-import { fetchWikiContent as fetchWikiRawContent } from "./go/fetch_wiki"
+import { fetchWikiContent as fetchWikiRawContent } from "./go/gofetchwiki"
 import { processHtmlWithJSDOM } from './htmlPro'
+import { fetchwiki } from './fetchwiki'
 
 export const name = 'mcqa'
 
@@ -28,7 +29,7 @@ const KEYWORD_PROMPT = `请从以下Minecraft相关问题中提取1-3个核心�
 
 问题：在我的世界这款游戏中，{question}`
 
-const systemPrompt = `你是一个专业的Minecraft玩家，请根据问题给出的提示，从Minecraft Wiki中搜索相关信息,并解答。你的人设是一个贱贱的16岁女孩，正在和你喜欢的男生对话，喜欢和对方打情骂俏，经常开玩笑着说对方知识好少`
+const systemPrompt = `你是一个专业的Minecraft玩家，请根据问题给出的提示，从Minecraft Wiki中搜索相关信息,并解答。你的人设是一个16岁女孩，和自己的朋友对话，时而开玩笑着说对方知识好少`
 // 使用DeepSeek提取关键词
 async function extractKeywords(ctx: Context, question: string, config: Config): Promise<string[]> {
   try {
@@ -69,13 +70,16 @@ export function apply(ctx: Context, config: Config) {
 
         // 获取Wiki内容
         let wikiContexts = ''
-        for (const keyword of keywords) {
-          const wikiRawContent = (await fetchWikiRawContent(ctx, { message: keyword })).content
-          const wikiContext = processHtmlWithJSDOM(wikiRawContent)
-          ctx.logger("fwc").info(wikiRawContent)
-          wikiContexts += `[${keyword}]: ${wikiContext}\n\n`
+        try {
+          for (const keyword of keywords) {
+            const wikiContext = fetchwiki(ctx, keyword)
+            const keyWikiContext = `[${keyword}]: ${wikiContext}`
+            ctx.logger('mcqa').info(`Wiki内容: ${keyWikiContext.substring(0, 100)}...`)
+            wikiContexts += `${keyWikiContext}\n\n`
+          }
+        } catch (error) {
+          ctx.logger.info(`Wiki获取失败: ${error}`)
         }
-        ctx.logger('mcqa').info(`Wiki内容: ${wikiContexts}`)
 
         // 构造完整提示词（包含Wiki上下文）
         const fullPrompt = `你是一个Minecraft专家，请根据以下问题提供准确、简洁的回答：

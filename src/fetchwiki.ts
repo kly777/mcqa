@@ -1,0 +1,20 @@
+import { Context } from "koishi"
+import { fetchWikiContent } from "./go/gofetchwiki"
+import { processHtmlWithJSDOM } from "./htmlPro"
+
+
+export async function fetchwiki(ctx: Context, keyword: string) {
+  try {
+    const wikiRawContent = (await fetchWikiContent(ctx, { message: keyword }))
+    if (wikiRawContent.error) {
+      ctx.logger.info(`Wiki获取失败: ${wikiRawContent.error}`)
+      return ""
+    }
+    const wikiContext = processHtmlWithJSDOM(wikiRawContent.content)
+    return wikiContext
+  }
+  catch (err) {
+    ctx.logger.error("获取维基内容时出错:", err)
+    return ""
+  }
+}
